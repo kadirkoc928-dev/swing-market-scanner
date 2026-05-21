@@ -127,7 +127,8 @@ if st.button("🚀 Markt-Scan jetzt starten"):
             else: return "background-color: #e74c3c; color: white;"
 
         st.markdown("### 🏆 Die Swing-Trading Rangliste (Top Treffer oben)")
-        styled_df = df.style.applymap(color_signal, subset=["Signal"])
+        # REPARIERTE ZEILE: .map statt .applymap
+        styled_df = df.style.map(color_signal, subset=["Signal"])
         st.dataframe(styled_df, use_container_width=True, height=600)
         st.balloons()
     else:
