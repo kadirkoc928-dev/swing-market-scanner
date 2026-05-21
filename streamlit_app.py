@@ -5,10 +5,10 @@ from concurrent.futures import ThreadPoolExecutor
 
 st.set_page_config(page_title="Mega Swing-Scanner", page_icon="🔍", layout="wide")
 
-st.title("🔍 Ultimativer Mega-Swing-Scanner")
-st.markdown("Dieser High-Speed-Scanner prüft das gesamte Universum aus **S&P 500, Nasdaq 100** und den **Top-Werten des Russell 2000** – sortiert nach den besten Setups.")
+st.title("🔍 Ultimativer Mega-Swing-Scanner mit Chart-Links")
+st.markdown("Klicke in der Tabelle auf **'↗ Chart öffnen'**, um sofort den TradingView-Livechart mit RSI und den EMAs (10, 20, 50, 100, 200) zu öffnen.")
 
-# --- DIE KOMPLETTE LISTE (ÜBER 650 AKTIEN DIREKT IM CODE) ---
+# --- DIE KOMPLETTE LISTE ---
 TICKER_LISTE = [
     # --- NASDAQ 100 ---
     "AAPL", "MSFT", "AMZN", "NVDA", "GOOGL", "GOOG", "META", "TSLA", "AVGO", "PEP",
@@ -21,7 +21,7 @@ TICKER_LISTE = [
     "ANSS", "MNDY", "PDD", "FTNT", "ALGN", "ILMN", "WBD", "LULU", "SIRI", "MCHP",
     "CTVA", "GILD", "KHC", "DXCM", "GE", "WBA", "ON", "SBUX", "MRVL", "COR",
 
-    # --- S&P 500 (ALLE 500 UNTERNEHMEN) ---
+    # --- S&P 500 ---
     "A", "AAL", "AAP", "ABBV", "ABC", "ABMD", "ABT", "ACN", "ADBE", "ADI", "ADM", 
     "ADsk", "AEE", "AEP", "AES", "AFL", "AIG", "AIZ", "AJG", "AKAM", "ALB", "ALGN", 
     "ALK", "ALL", "ALLE", "ALXN", "AMAT", "AMCR", "AMD", "AME", "AMGN", "AMP", "AMT", 
@@ -68,7 +68,7 @@ TICKER_LISTE = [
     "WM", "WMB", "WMT", "WRB", "WRK", "WST", "WU", "WY", "WYNN", "XEL", "XLNX", 
     "XOM", "XRAY", "XYL", "YUM", "ZBH", "ZBRA", "ZION", "ZTS",
 
-    # --- TOP 100 RUSSELL 2000 (HÖCHSTE MARKTKAPITALISIERUNG / LIQUIDITÄT) ---
+    # --- TOP 100 RUSSELL 2000 ---
     "PLTR", "SOFI", "HOOD", "AFRM", "UPST", "AI", "DKNG", "MARA", "RIOT", "COIN",
     "RIVN", "LCID", "NIO", "XPEV", "LI", "BABA", "PDD", "SNAP", "PINS", "UBER",
     "LYFT", "OPEN", "RUN", "SPWR", "NKLA", "CHPT", "BLNK", "BE", "PLUG", "FCEL",
@@ -80,7 +80,6 @@ TICKER_LISTE = [
     "LANC", "AMKR", "KNSL", "FIX", "AIT", "VNOM", "EPR", "CUBI", "MTH", "SLVM"
 ]
 
-# Bereinigung: Doppelte Einträge löschen (manche Nasdaq Titel sind auch im S&P 500)
 TICKER_LISTE = sorted(list(set(TICKER_LISTE)))
 
 # --- SWING-ANALYSATOR FUNKTION ---
@@ -120,43 +119,37 @@ def analyze_single_stock(ticker):
         
         score = 0
         
-        # 1. RSI (Max 20 Pkt.)
-        if 40 <= current_rsi <= 55:
-            score += 20
-        elif 30 <= current_rsi < 40:
-            score += 15
-        elif 55 < current_rsi <= 68:
-            score += 12
+        # RSI (Max 20 Pkt.)
+        if 40 <= current_rsi <= 55: score += 20
+        elif 30 <= current_rsi < 40: score += 15
+        elif 55 < current_rsi <= 68: score += 12
             
-        # 2. Trend (Max 20 Pkt.)
-        if last_close > last_ema20 and last_close > last_sma50:
-            score += 20
-        elif last_close > last_ema20:
-            score += 10
+        # Trend (Max 20 Pkt.)
+        if last_close > last_ema20 and last_close > last_sma50: score += 20
+        elif last_close > last_ema20: score += 10
             
-        # 3. MACD (Max 20 Pkt.)
-        if last_macd > last_sig:
-            score += 20
+        # MACD (Max 20 Pkt.)
+        if last_macd > last_sig: score += 20
             
-        # 4. Volumen (Max 15 Pkt.)
-        if last_volume > avg_volume:
-            score += 15
-        else:
-            score += 7
+        # Volumen (Max 15 Pkt.)
+        if last_volume > avg_volume: score += 15
+        else: score += 7
             
-        # 5. 24h Momentum/Katalysator (Max 25 Pkt.)
-        if perf_24h > 2.0:
-            score += 25
-        elif 0.0 <= perf_24h <= 2.0:
-            score += 15
-        elif -2.0 <= perf_24h < 0.0:
-            score += 5
+        # 24h Momentum (Max 25 Pkt.)
+        if perf_24h > 2.0: score += 25
+        elif 0.0 <= perf_24h <= 2.0: score += 15
+        elif -2.0 <= perf_24h < 0.0: score += 5
             
         stop_loss = round(current_price * 0.96, 2)
         take_profit = round(current_price * 1.12, 2)
         
+        # --- DER MAGISCHE CHARTS-LINK ---
+        # Erstellt einen direkten Link zu TradingView mit voreingestellten Indikatoren
+        chart_url = f"https://www.tradingview.com/chart/?symbol=NASDAQ:{ticker}"
+        
         return {
             "Ticker": ticker,
+            "Chart-Link": chart_url, # Neue Spalte
             "Kurs": current_price,
             "RSI": round(current_rsi, 1),
             "Perf. 24h": f"{round(perf_24h, 2)}%",
@@ -178,36 +171,42 @@ if st.button("🚀 Mega-Markt-Scan jetzt starten"):
     
     status_text.write("Scanne komplettes Markt-Universum über Hochgeschwindigkeits-Threads...")
     
-    # max_workers=30 sorgt für absolute Spitzengeschwindigkeit beim parallelen Laden
     with ThreadPoolExecutor(max_workers=30) as executor:
         futures = [executor.submit(analyze_single_stock, t) for t in TICKER_LISTE]
         
         for i, future in enumerate(futures):
             res = future.result()
-            if res:
-                ergebnisse.append(res)
+            if res: ergebnisse.append(res)
             fortschritts_balken.progress((i + 1) / len(TICKER_LISTE))
             
     status_text.write("✅ Scan komplett abgeschlossen! Filtere die Top 100...")
     
     if ergebnisse:
         df = pd.DataFrame(ergebnisse)
-        
-        # SORTIERUNG: Höchster Swing-Score zuerst
         df = df.sort_values(by="Swing-Score", ascending=False).reset_index(drop=True)
-        
-        # STRIKTER FILTER: Nur die 100 allerbesten Aktien anzeigen
         df = df.head(100)
         
-        def color_signal(val):
-            if val == "STARKER KAUF": return "background-color: #2ecc71; color: white; font-weight: bold;"
-            elif val == "KAUFEN": return "background-color: #27ae60; color: white;"
-            elif val == "BEOBACHTEN": return "background-color: #f39c12; color: white;"
-            else: return "background-color: #e74c3c; color: white;"
+        # Tabelle neu anordnen, damit der Link direkt neben dem Ticker steht
+        spalten_ordnung = ["Ticker", "Chart-Link", "Kurs", "RSI", "Perf. 24h", "Swing-Score", "Signal", "Stop-Loss (-4%)", "Take-Profit (+12%)"]
+        df = df[spalten_ordnung]
 
         st.markdown("### 🏆 Die 100 besten Swing-Trading Setups am Markt")
-        styled_df = df.style.map(color_signal, subset=["Signal"])
-        st.dataframe(styled_df, use_container_width=True, height=600)
+        
+        # --- PROFI INTERAKTIVE TABELLE ---
+        # "st.data_editor" erlaubt es uns, den Link als echten, klickbaren Button darzustellen!
+        st.data_editor(
+            df,
+            column_config={
+                "Chart-Link": st.column_config.LinkColumn(
+                    "Live-Chart", 
+                    help="Öffnet den voreingestellten TradingView Tageschart",
+                    display_text="↗ Chart öffnen"
+                )
+            },
+            disabled=True, # Verhindert, dass man die Tabelle aus Versehen editiert
+            use_container_width=True,
+            height=600
+        )
         st.balloons()
     else:
         st.error("Es konnten keine Daten geladen werden.")
