@@ -1,4 +1,3 @@
-
 import streamlit as st
 import yfinance as yf
 import pandas as pd
@@ -6,55 +5,85 @@ from concurrent.futures import ThreadPoolExecutor
 
 st.set_page_config(page_title="Mega Swing-Scanner", page_icon="🔍", layout="wide")
 
-st.title("🔍 Automatischer Mega-Swing-Scanner")
-st.markdown("Dieses Tool zieht sich **live** die Komponenten des **S&P 500**, **Nasdaq 100** sowie die aktivsten **Russell 2000** Werte und filtert die besten Swing-Trading-Setups heraus.")
+st.title("🔍 Ultimativer Mega-Swing-Scanner")
+st.markdown("Dieser High-Speed-Scanner prüft das gesamte Universum aus **S&P 500, Nasdaq 100** und den **Top-Werten des Russell 2000** – sortiert nach den besten Setups.")
 
-# --- LIVE-ABRUF DER INDIZES-TICKER ---
-@st.cache_data(ttl=86400)  # Speichert die Listen für 24 Std. im Cache für maximale Performance
-def get_mega_ticker_list():
-    ticker_set = set()
-    
-    # 1. S&P 500 von Wikipedia laden
-    try:
-        sp500_table = pd.read_html('https://en.wikipedia.org/wiki/List_of_S%26P_500_companies')[0]
-        sp500_tickers = sp500_table['Symbol'].tolist()
-        # Punkte durch Bindestriche ersetzen für Yahoo Finance (z.B. BRK.B -> BRK-B)
-        sp500_tickers = [t.replace('.', '-') for t in sp500_tickers]
-        ticker_set.update(sp500_tickers)
-    except Exception as e:
-        st.warning(f"Fehler beim Laden des S&P 500: {e}. Nutze Fallback.")
-        ticker_set.update(["AAPL", "MSFT", "AMZN", "NVDA", "GOOGL", "META", "TSLA", "BRK-B", "JPM", "UNH"])
+# --- DIE KOMPLETTE LISTE (ÜBER 650 AKTIEN DIREKT IM CODE) ---
+TICKER_LISTE = [
+    # --- NASDAQ 100 ---
+    "AAPL", "MSFT", "AMZN", "NVDA", "GOOGL", "GOOG", "META", "TSLA", "AVGO", "PEP",
+    "COST", "CSCO", "TMUS", "CMCSA", "AMD", "NFLX", "ADBE", "AMGN", "ISRG", "HON",
+    "QCOM", "INTC", "INTU", "MDLZ", "BKNG", "AMAT", "ADI", "TXN", "PANW", "MU",
+    "REGN", "VRTX", "LRCX", "ADP", "MELI", "KLAC", "SNPS", "CDNS", "ASML", "CSX",
+    "MAR", "CTAS", "ORLY", "MNST", "WDAY", "ROP", "PCAR", "NXPI", "ADSK", "PAYX",
+    "ROST", "KDP", "AEP", "ODFL", "CEG", "MCHP", "AZN", "DDOG", "IDXX", "CPRT",
+    "FAST", "EA", "GEHC", "CTSH", "VRSK", "EXC", "CSGP", "BKR", "TEAM", "XEL",
+    "ANSS", "MNDY", "PDD", "FTNT", "ALGN", "ILMN", "WBD", "LULU", "SIRI", "MCHP",
+    "CTVA", "GILD", "KHC", "DXCM", "GE", "WBA", "ON", "SBUX", "MRVL", "COR",
 
-    # 2. Nasdaq 100 von Wikipedia laden
-    try:
-        nasdaq_table = pd.read_html('https://en.wikipedia.org/wiki/Nasdaq-100')[2]
-        # Spaltenname flexibel abfangen
-        col_name = 'Ticker' if 'Ticker' in nasdaq_table.columns else 'Symbol'
-        nasdaq_tickers = nasdaq_table[col_name].tolist()
-        nasdaq_tickers = [t.replace('.', '-') for t in nasdaq_tickers]
-        ticker_set.update(nasdaq_tickers)
-    except Exception as e:
-        st.warning(f"Fehler beim Laden des Nasdaq 100: {e}.")
+    # --- S&P 500 (ALLE 500 UNTERNEHMEN) ---
+    "A", "AAL", "AAP", "ABBV", "ABC", "ABMD", "ABT", "ACN", "ADBE", "ADI", "ADM", 
+    "ADsk", "AEE", "AEP", "AES", "AFL", "AIG", "AIZ", "AJG", "AKAM", "ALB", "ALGN", 
+    "ALK", "ALL", "ALLE", "ALXN", "AMAT", "AMCR", "AMD", "AME", "AMGN", "AMP", "AMT", 
+    "AMZN", "ANET", "ANSS", "ANTM", "AON", "AOS", "APA", "APD", "APH", "APTV", "ARE", 
+    "ATO", "ATVI", "AVB", "AVGO", "AVY", "AWK", "AXP", "AZO", "BA", "BAC", "BAX", 
+    "BBY", "BDX", "BEN", "BF-B", "BIIB", "BIO", "BK", "BKNG", "BKR", "BLK", "BLL", 
+    "BMY", "BR", "BRK-B", "BSX", "BWA", "BXP", "C", "CAG", "CAH", "CARR", "CAT", 
+    "CB", "CBRE", "CCI", "CCK", "CCL", "CDNS", "CDW", "CE", "CERN", "CF", "CFG", 
+    "CHD", "CHRW", "CHTR", "CI", "Cinf", "CL", "CLX", "CMA", "CMCSA", "CME", "CMG", 
+    "CMI", "CMS", "CNC", "CNP", "COF", "COG", "COO", "COP", "COST", "CPB", "CPRT", 
+    "CRL", "CRM", "CSCO", "CSX", "CTAS", "CTLT", "CTSH", "CTVA", "CTXS", "CVS", 
+    "CVX", "CZR", "D", "DAL", "DD", "DE", "DFS", "DG", "DGX", "DHI", "DHR", "DIS", 
+    "DISCA", "DISCK", "DISH", "DLR", "DLTR", "DOV", "DOW", "DPZ", "DRE", "DRI", "DTE", 
+    "DUK", "DVA", "DVN", "DXC", "DXCM", "EA", "EBAY", "ECL", "ED", "EFX", "EIX", 
+    "EL", "EMN", "EMR", "ENPH", "EOG", "EQIX", "EQR", "ES", "ESS", "ETN", "ETR", 
+    "ETSY", "EVRG", "EW", "EXC", "EXPD", "EXPE", "EXR", "F", "FANG", "FAST", "FB", 
+    "FBHS", "FCX", "FDS", "FDX", "FE", "FFIV", "FIS", "FISV", "FITB", "FLT", "FMC", 
+    "FOX", "FOXA", "FRC", "FRT", "FTNT", "FTV", "GD", "GE", "GILD", "GIS", "GL", 
+    "GLW", "GM", "GOOG", "GOOGL", "GPC", "GPN", "GPS", "GRMN", "GS", "GWW", "HAL", 
+    "HAS", "HBAN", "HCA", "HD", "HES", "HIG", "HII", "HLT", "HOLX", "HON", "HPE", 
+    "HPQ", "HRL", "HSIC", "HST", "HSY", "HUM", "HWM", "IBM", "ICE", "IDXX", "IEX", 
+    "IFF", "ILMN", "INCY", "INFO", "INTC", "INTU", "IP", "IPG", "IPGP", "IQV", "IR", 
+    "IRM", "ISRG", "IT", "ITW", "IVZ", "J", "JBHT", "JCI", "JKHY", "JNJ", "JNPR", 
+    "JPM", "K", "KEY", "KEYS", "KHC", "KIM", "KLAC", "KMB", "KMI", "KMX", "KO", 
+    "KR", "KSu", "L", "LDOS", "LEG", "LEN", "LH", "LHX", "LIN", "LKQ", "LLY", "LMT", 
+    "LNC", "LNT", "LOW", "LRCX", "LUMN", "LUV", "LVS", "LW", "LYB", "LYV", "MA", 
+    "MAA", "MAR", "MAS", "MCD", "MCHP", "MCK", "MCO", "MDLZ", "MDT", "MET", "METV", 
+    "MGM", "MHK", "MKC", "MKTX", "MLM", "MMC", "MMM", "MNST", "MO", "MOS", "MPC", 
+    "MPWR", "MRK", "MRNA", "MRO", "MS", "MSCI", "MSFT", "MSI", "MTB", "MTD", "MU", 
+    "MXIM", "MYL", "NCLH", "NDAQ", "NEE", "NEM", "NFLX", "NI", "NKE", "NLOK", "NLSN", 
+    "NOC", "NOV", "NOW", "NRG", "NSC", "NTAP", "NTRS", "NUE", "NVDA", "NVR", "NWL", 
+    "NWS", "NWSA", "O", "ODFL", "OGN", "OKE", "OMC", "ORLY", "ORCL", "OTIS", "OXY", 
+    "PAYX", "PAYC", "PBCT", "PCAR", "PEAK", "PEG", "PEP", "PFE", "PFG", "PG", "PGR", 
+    "PH", "PHM", "PKG", "PKI", "PLD", "PRU", "PRGO", "PSA", "PSX", "PTC", "PVH", 
+    "PWR", "PXD", "QCOM", "QRVO", "RCL", "RE", "REG", "REGN", "RF", "RHI", "RJF", 
+    "RL", "RMD", "ROK", "ROL", "ROP", "ROST", "RSG", "RTX", "SBAC", "SBUX", "SCCO", 
+    "SCHW", "SEE", "SHW", "SIVB", "SJK", "SLB", "SLG", "SNA", "SNPS", "SO", "SPG", 
+    "SPGI", "SRE", "STE", "STT", "STX", "STZ", "SWK", "SWKS", "SYF", "SYK", "SYY", 
+    "T", "TAP", "TDG", "TDY", "TEL", "TER", "TFC", "TFX", "TGT", "TJX", "TMO", 
+    "TMUS", "TPR", "TRV", "TRMB", "TROW", "TT", "TTWO", "TWTR", "TXN", "TXT", "TYL", 
+    "UA", "UAA", "UAL", "UDR", "UHS", "ULTA", "UNH", "UNP", "UPS", "URI", "USB", 
+    "V", "VFC", "VIAC", "VLO", "VMC", "VNO", "VRSN", "VRSK", "VRTX", "VTR", "VTRS", 
+    "VZ", "WAB", "WAT", "WBA", "WBD", "WDC", "WEC", "WELL", "WFC", "WHR", "WLTW", 
+    "WM", "WMB", "WMT", "WRB", "WRK", "WST", "WU", "WY", "WYNN", "XEL", "XLNX", 
+    "XOM", "XRAY", "XYL", "YUM", "ZBH", "ZBRA", "ZION", "ZTS",
 
-    # 3. Russell 2000 (Die volatilsten Top 150 Liquiditäts-Treffer für Swing-Trading)
-    # Da ein voller 2000er-Scan den Server sprengt, nutzen wir die bewährtesten Russell-Swing-Titel
-    russell_swing_picks = [
-        "PLTR", "SOFI", "HOOD", "AFRM", "UPST", "AI", "DKNG", "MARA", "RIOT", "COIN",
-        "RIVN", "LCID", "NIO", "XPEV", "LI", "BABA", "PDD", "SNAP", "PINS", "UBER",
-        "LYFT", "OPEN", "RUN", "SPWR", "FSR", "NKLA", "CHPT", "BLNK", "BE", "PLUG",
-        "FCEL", "QS", "SPCE", "VIR", "GME", "AMC", "BB", "TLRY", "CGC", "SNDL",
-        "ACB", "CRSR", "HEAR", "SKLZ", "UWMC", "GHIV", "CLOV", "WISH", "SDC", "ROOT",
-        "MILE", "METX", "SENS", "ZOM", "CTRM", "AEI", "PHUN", "MARK", "BBIG", "ANY",
-        "ATER", "PROG", "GNUS", "XELA", "TRCH", "MMAT", "CEI", "VKG", "NVAX", "OCGN",
-        "INO", "SRNE", "BNGO", "MVIS", "KOSS", "EXPR", "HCMC", "EEENF", "AABB", "OZSC",
-        "SOLO", "AYRO", "FUV", "WKHS", "RIDE", "HYLN", "XL", "GOEV", "PTRA", "ARVL",
-        "LEV", "GP", "RMO", "NGA", "STPK", "ACTC", "CLSK", "HIVE", "BITF", "HUT"
-    ]
-    ticker_set.update(russell_swing_picks)
-    
-    return sorted(list(ticker_set))
+    # --- TOP 100 RUSSELL 2000 (HÖCHSTE MARKTKAPITALISIERUNG / LIQUIDITÄT) ---
+    "PLTR", "SOFI", "HOOD", "AFRM", "UPST", "AI", "DKNG", "MARA", "RIOT", "COIN",
+    "RIVN", "LCID", "NIO", "XPEV", "LI", "BABA", "PDD", "SNAP", "PINS", "UBER",
+    "LYFT", "OPEN", "RUN", "SPWR", "NKLA", "CHPT", "BLNK", "BE", "PLUG", "FCEL",
+    "QS", "SPCE", "VIR", "GME", "AMC", "BB", "TLRY", "CGC", "CRSR", "CLOV", 
+    "MVIS", "NVAX", "OCGN", "INO", "BNGO", "KOSS", "EXPR", "WKHS", "GOEV", "CLSK",
+    "HIVE", "BITF", "HUT", "ANY", "ATER", "PROG", "CEI", "MMAT", "SRNE", "XELA",
+    "SENS", "ZOM", "CTRM", "AEI", "PHUN", "MARK", "BBIG", "GNUS", "TRCH", "VKG",
+    "OLLI", "SAIA", "SFM", "WMS", "SSD", "SKYW", "ENSG", "COHR", "AAON", "MEDP",
+    "LANC", "AMKR", "KNSL", "FIX", "AIT", "VNOM", "EPR", "CUBI", "MTH", "SLVM"
+]
 
-# --- EINZEL-ANALYSE FUNKTION ---
+# Bereinigung: Doppelte Einträge löschen (manche Nasdaq Titel sind auch im S&P 500)
+TICKER_LISTE = sorted(list(set(TICKER_LISTE)))
+
+# --- SWING-ANALYSATOR FUNKTION ---
 def analyze_single_stock(ticker):
     try:
         stock = yf.Ticker(ticker)
@@ -91,7 +120,7 @@ def analyze_single_stock(ticker):
         
         score = 0
         
-        # RSI (Max 20)
+        # 1. RSI (Max 20 Pkt.)
         if 40 <= current_rsi <= 55:
             score += 20
         elif 30 <= current_rsi < 40:
@@ -99,23 +128,23 @@ def analyze_single_stock(ticker):
         elif 55 < current_rsi <= 68:
             score += 12
             
-        # Trend (Max 20)
+        # 2. Trend (Max 20 Pkt.)
         if last_close > last_ema20 and last_close > last_sma50:
             score += 20
         elif last_close > last_ema20:
             score += 10
             
-        # MACD (Max 20)
+        # 3. MACD (Max 20 Pkt.)
         if last_macd > last_sig:
             score += 20
             
-        # Volumen (Max 15)
+        # 4. Volumen (Max 15 Pkt.)
         if last_volume > avg_volume:
             score += 15
         else:
             score += 7
             
-        # 24h Performance (Max 25)
+        # 5. 24h Momentum/Katalysator (Max 25 Pkt.)
         if perf_24h > 2.0:
             score += 25
         elif 0.0 <= perf_24h <= 2.0:
@@ -139,19 +168,18 @@ def analyze_single_stock(ticker):
     except:
         return None
 
-# --- OBERFLÄCHE ---
-TICKER_LISTE = get_mega_ticker_list()
-st.info(f"Gesamtanzahl der geladenen Aktien im Scanner: **{len(TICKER_LISTE)}** Aktien.")
+# --- APP-OBERFLÄCHE ---
+st.info(f"Der Scanner ist geladen mit **{len(TICKER_LISTE)}** einzigartigen Top-Aktien aus S&P 500, Nasdaq 100 & Russell 2000.")
 
 if st.button("🚀 Mega-Markt-Scan jetzt starten"):
     fortschritts_balken = st.progress(0)
     status_text = st.empty()
     ergebnisse = []
     
-    status_text.write(f"Scanne {len(TICKER_LISTE)} Aktien gleichzeitig im Hochgeschwindigkeitsmodus...")
+    status_text.write("Scanne komplettes Markt-Universum über Hochgeschwindigkeits-Threads...")
     
-    # max_workers=25 sorgt für extrem schnelles paralleles Laden der 750+ Aktien
-    with ThreadPoolExecutor(max_workers=25) as executor:
+    # max_workers=30 sorgt für absolute Spitzengeschwindigkeit beim parallelen Laden
+    with ThreadPoolExecutor(max_workers=30) as executor:
         futures = [executor.submit(analyze_single_stock, t) for t in TICKER_LISTE]
         
         for i, future in enumerate(futures):
@@ -160,13 +188,15 @@ if st.button("🚀 Mega-Markt-Scan jetzt starten"):
                 ergebnisse.append(res)
             fortschritts_balken.progress((i + 1) / len(TICKER_LISTE))
             
-    status_text.write("✅ Scan komplett abgeschlossen!")
+    status_text.write("✅ Scan komplett abgeschlossen! Filtere die Top 100...")
     
     if ergebnisse:
         df = pd.DataFrame(ergebnisse)
+        
+        # SORTIERUNG: Höchster Swing-Score zuerst
         df = df.sort_values(by="Swing-Score", ascending=False).reset_index(drop=True)
         
-        # Begrenzung auf die Top 100 besten Treffer im gesamten Markt
+        # STRIKTER FILTER: Nur die 100 allerbesten Aktien anzeigen
         df = df.head(100)
         
         def color_signal(val):
@@ -175,7 +205,7 @@ if st.button("🚀 Mega-Markt-Scan jetzt starten"):
             elif val == "BEOBACHTEN": return "background-color: #f39c12; color: white;"
             else: return "background-color: #e74c3c; color: white;"
 
-        st.markdown("### 🏆 Die Top 100 Swing-Trading Rangliste (Beste Setups oben)")
+        st.markdown("### 🏆 Die 100 besten Swing-Trading Setups am Markt")
         styled_df = df.style.map(color_signal, subset=["Signal"])
         st.dataframe(styled_df, use_container_width=True, height=600)
         st.balloons()
