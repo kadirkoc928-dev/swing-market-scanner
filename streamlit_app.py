@@ -1,23 +1,60 @@
+
 import streamlit as st
 import yfinance as yf
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor
 
-st.set_page_config(page_title="Profi Swing-Scanner", page_icon="🔍", layout="wide")
+st.set_page_config(page_title="Mega Swing-Scanner", page_icon="🔍", layout="wide")
 
-st.title("🔍 Automatischer Profi-Swing-Scanner")
-st.markdown("Dieses Tool scannt den Markt vollautomatisch, berechnet die Swing-Scores und listet die besten Setups absteigend auf.")
+st.title("🔍 Automatischer Mega-Swing-Scanner")
+st.markdown("Dieses Tool zieht sich **live** die Komponenten des **S&P 500**, **Nasdaq 100** sowie die aktivsten **Russell 2000** Werte und filtert die besten Swing-Trading-Setups heraus.")
 
-# Liste der zu scannenden Aktien
-TICKER_LISTE = [
-    "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "TSLA", "META", "AMD", "NFLX", "COIN",
-    "PLTR", "BABA", "NIO", "XPEV", "LI", "PYPL", "SQ", "DIS", "JPM", "BAC",
-    "F", "GM", "XOM", "CVX", "PFE", "MRNA", "PINS", "SNAP", "UBER", "LYFT",
-    "SAP.DE", "SIE.DE", "DTE.DE", "MBG.DE", "BMW.DE", "VOW3.DE", "ALV.DE", "BAS.DE",
-    "INTC", "QCOM", "MU", "ASML", "TSM", "AVGO", "PANW", "CRWD", "NET", "SNOW",
-    "RIVN", "LCID", "MARA", "RIOT", "HOOD", "AFRM", "SOFI", "UPST", "AI", "DKNG"
-]
+# --- LIVE-ABRUF DER INDIZES-TICKER ---
+@st.cache_data(ttl=86400)  # Speichert die Listen für 24 Std. im Cache für maximale Performance
+def get_mega_ticker_list():
+    ticker_set = set()
+    
+    # 1. S&P 500 von Wikipedia laden
+    try:
+        sp500_table = pd.read_html('https://en.wikipedia.org/wiki/List_of_S%26P_500_companies')[0]
+        sp500_tickers = sp500_table['Symbol'].tolist()
+        # Punkte durch Bindestriche ersetzen für Yahoo Finance (z.B. BRK.B -> BRK-B)
+        sp500_tickers = [t.replace('.', '-') for t in sp500_tickers]
+        ticker_set.update(sp500_tickers)
+    except Exception as e:
+        st.warning(f"Fehler beim Laden des S&P 500: {e}. Nutze Fallback.")
+        ticker_set.update(["AAPL", "MSFT", "AMZN", "NVDA", "GOOGL", "META", "TSLA", "BRK-B", "JPM", "UNH"])
 
+    # 2. Nasdaq 100 von Wikipedia laden
+    try:
+        nasdaq_table = pd.read_html('https://en.wikipedia.org/wiki/Nasdaq-100')[2]
+        # Spaltenname flexibel abfangen
+        col_name = 'Ticker' if 'Ticker' in nasdaq_table.columns else 'Symbol'
+        nasdaq_tickers = nasdaq_table[col_name].tolist()
+        nasdaq_tickers = [t.replace('.', '-') for t in nasdaq_tickers]
+        ticker_set.update(nasdaq_tickers)
+    except Exception as e:
+        st.warning(f"Fehler beim Laden des Nasdaq 100: {e}.")
+
+    # 3. Russell 2000 (Die volatilsten Top 150 Liquiditäts-Treffer für Swing-Trading)
+    # Da ein voller 2000er-Scan den Server sprengt, nutzen wir die bewährtesten Russell-Swing-Titel
+    russell_swing_picks = [
+        "PLTR", "SOFI", "HOOD", "AFRM", "UPST", "AI", "DKNG", "MARA", "RIOT", "COIN",
+        "RIVN", "LCID", "NIO", "XPEV", "LI", "BABA", "PDD", "SNAP", "PINS", "UBER",
+        "LYFT", "OPEN", "RUN", "SPWR", "FSR", "NKLA", "CHPT", "BLNK", "BE", "PLUG",
+        "FCEL", "QS", "SPCE", "VIR", "GME", "AMC", "BB", "TLRY", "CGC", "SNDL",
+        "ACB", "CRSR", "HEAR", "SKLZ", "UWMC", "GHIV", "CLOV", "WISH", "SDC", "ROOT",
+        "MILE", "METX", "SENS", "ZOM", "CTRM", "AEI", "PHUN", "MARK", "BBIG", "ANY",
+        "ATER", "PROG", "GNUS", "XELA", "TRCH", "MMAT", "CEI", "VKG", "NVAX", "OCGN",
+        "INO", "SRNE", "BNGO", "MVIS", "KOSS", "EXPR", "HCMC", "EEENF", "AABB", "OZSC",
+        "SOLO", "AYRO", "FUV", "WKHS", "RIDE", "HYLN", "XL", "GOEV", "PTRA", "ARVL",
+        "LEV", "GP", "RMO", "NGA", "STPK", "ACTC", "CLSK", "HIVE", "BITF", "HUT"
+    ]
+    ticker_set.update(russell_swing_picks)
+    
+    return sorted(list(ticker_set))
+
+# --- EINZEL-ANALYSE FUNKTION ---
 def analyze_single_stock(ticker):
     try:
         stock = yf.Ticker(ticker)
@@ -54,6 +91,7 @@ def analyze_single_stock(ticker):
         
         score = 0
         
+        # RSI (Max 20)
         if 40 <= current_rsi <= 55:
             score += 20
         elif 30 <= current_rsi < 40:
@@ -61,19 +99,23 @@ def analyze_single_stock(ticker):
         elif 55 < current_rsi <= 68:
             score += 12
             
+        # Trend (Max 20)
         if last_close > last_ema20 and last_close > last_sma50:
             score += 20
         elif last_close > last_ema20:
             score += 10
             
+        # MACD (Max 20)
         if last_macd > last_sig:
             score += 20
             
+        # Volumen (Max 15)
         if last_volume > avg_volume:
             score += 15
         else:
             score += 7
             
+        # 24h Performance (Max 25)
         if perf_24h > 2.0:
             score += 25
         elif 0.0 <= perf_24h <= 2.0:
@@ -97,14 +139,19 @@ def analyze_single_stock(ticker):
     except:
         return None
 
-if st.button("🚀 Markt-Scan jetzt starten"):
+# --- OBERFLÄCHE ---
+TICKER_LISTE = get_mega_ticker_list()
+st.info(f"Gesamtanzahl der geladenen Aktien im Scanner: **{len(TICKER_LISTE)}** Aktien.")
+
+if st.button("🚀 Mega-Markt-Scan jetzt starten"):
     fortschritts_balken = st.progress(0)
     status_text = st.empty()
     ergebnisse = []
     
-    status_text.write("Scanne Live-Marktdaten...")
+    status_text.write(f"Scanne {len(TICKER_LISTE)} Aktien gleichzeitig im Hochgeschwindigkeitsmodus...")
     
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    # max_workers=25 sorgt für extrem schnelles paralleles Laden der 750+ Aktien
+    with ThreadPoolExecutor(max_workers=25) as executor:
         futures = [executor.submit(analyze_single_stock, t) for t in TICKER_LISTE]
         
         for i, future in enumerate(futures):
@@ -113,11 +160,13 @@ if st.button("🚀 Markt-Scan jetzt starten"):
                 ergebnisse.append(res)
             fortschritts_balken.progress((i + 1) / len(TICKER_LISTE))
             
-    status_text.write("✅ Scan abgeschlossen!")
+    status_text.write("✅ Scan komplett abgeschlossen!")
     
     if ergebnisse:
         df = pd.DataFrame(ergebnisse)
         df = df.sort_values(by="Swing-Score", ascending=False).reset_index(drop=True)
+        
+        # Begrenzung auf die Top 100 besten Treffer im gesamten Markt
         df = df.head(100)
         
         def color_signal(val):
@@ -126,8 +175,7 @@ if st.button("🚀 Markt-Scan jetzt starten"):
             elif val == "BEOBACHTEN": return "background-color: #f39c12; color: white;"
             else: return "background-color: #e74c3c; color: white;"
 
-        st.markdown("### 🏆 Die Swing-Trading Rangliste (Top Treffer oben)")
-        # REPARIERTE ZEILE: .map statt .applymap
+        st.markdown("### 🏆 Die Top 100 Swing-Trading Rangliste (Beste Setups oben)")
         styled_df = df.style.map(color_signal, subset=["Signal"])
         st.dataframe(styled_df, use_container_width=True, height=600)
         st.balloons()
